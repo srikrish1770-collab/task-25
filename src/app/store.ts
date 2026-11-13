@@ -1,3 +1,6 @@
+import type { Middleware } from "@reduxjs/toolkit";
+import { authSlice, canAccess, canDelete, scopeDatabase } from "./auth";
+import { useMemo } from "react";
 import {
   configureStore,
   createSlice,
@@ -85,10 +88,62 @@ export const crmSlice = createSlice({
   },
 });
 export const { save, remove, convert, reset } = crmSlice.actions;
-export const store = configureStore({ reducer: { crm: crmSlice.reducer } });
+const permissionMiddleware: Middleware = (api) => (next) => (action) => {
+  const a = action as { type: string };
+  if (a.type.startsWith("crm/")) {
+    const state = api.getState() as {
+      crm: Database;
+      auth: ReturnType<typeof authSlice.reducer>;
+    };
+    const user = state.auth.accounts.find((u) => u.id === state.auth.session);
+    if (!user) return;
+    if (a.type === "crm/reset" && user.role !== "Admin") return;
+    if (save.match(action)) {
+      const { domain, record } = action.payload;
+      const existing = state.crm[domain].find((r) => r.id === record.id);
+      if ((existing && !canAccess(user, existing)) || !canAccess(user, record))
+        return;
+      const links = [record.customerId, record.leadId, record.linkedId].filter(
+        Boolean,
+      );
+      if (
+        links.some(
+          (id) =>
+            !Object.values(state.crm)
+              .flat()
+              .some((r) => r.id === id && canAccess(user, r)),
+        )
+      )
+        return;
+    }
+    if (remove.match(action)) {
+      const r = state.crm[action.payload.domain].find(
+        (r) => r.id === action.payload.id,
+      );
+      if (!r || !canAccess(user, r) || !canDelete(user)) return;
+    }
+    if (convert.match(action)) {
+      const r = state.crm.leads.find((r) => r.id === action.payload.id);
+      if (!r || !canAccess(user, r)) return;
+    }
+  }
+  return next(action);
+};
+export const store = configureStore({
+  reducer: { crm: crmSlice.reducer, auth: authSlice.reducer },
+  middleware: (getDefault) => getDefault().concat(permissionMiddleware),
+});
 let persistenceFailed = false;
 store.subscribe(() => {
   persistenceFailed = !persist(store.getState().crm);
+  try {
+    localStorage.setItem(
+      "meridian-accounts-v1",
+      JSON.stringify(store.getState().auth),
+    );
+  } catch {
+    persistenceFailed = true;
+  }
 });
 export const hasPersistenceError = () => persistenceFailed;
 export type RootState = ReturnType<typeof store.getState>;
@@ -121,3 +176,11 @@ export const analytics = createSelector(
     };
   },
 );
+
+export const useAccount = () =>
+  useAppSelector((s) => s.auth.accounts.find((a) => a.id === s.auth.session));
+export function useVisibleDatabase() {
+  const db = useAppSelector((s) => s.crm);
+  const u = useAccount();
+  return useMemo(() => scopeDatabase(db, u), [db, u]);
+}

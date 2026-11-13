@@ -235,3 +235,5 @@ test("keyboard modal loop, global search, mobile navigation and report export", 
   await page.getByRole("button", { name: "Export report" }).click();
   expect((await download).suggestedFilename()).toBe("meridian-report.csv");
 });
+
+ test.beforeEach(async ({page})=>{await page.goto('/login');await page.getByLabel('Email',{exact:true}).fill('admin@meridian.demo');await page.getByLabel('Password',{exact:true}).fill('Meridian2026!');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('heading',{name:'Overview',exact:true})).toBeVisible();});

@@ -1,3 +1,4 @@
+import {authSlice} from '../app/auth';
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -11,8 +12,8 @@ import { Records } from "../features/Records";
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <Provider
     store={configureStore({
-      reducer: { crm: crmSlice.reducer },
-      preloadedState: { crm: seed() },
+      reducer: { crm: crmSlice.reducer, auth: authSlice.reducer },
+      preloadedState: { crm: seed(), auth: authSlice.reducer(undefined,authSlice.actions.login('admin')) },
     })}
   >
     <MemoryRouter>{children}</MemoryRouter>

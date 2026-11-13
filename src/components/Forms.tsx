@@ -1,3 +1,4 @@
+import { useVisibleDatabase, useAccount } from "../app/store";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { z } from "zod";
@@ -23,8 +24,11 @@ export function Dialog({
   const titleId = useId();
   useEffect(() => {
     const trigger = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     ref.current?.showModal();
     return () => {
+      document.body.style.overflow = previousOverflow;
       if (trigger instanceof HTMLElement) trigger.focus();
     };
   }, []);
@@ -100,8 +104,16 @@ export function RecordForm({
   onClose: () => void;
   onSave: (r: RecordItem) => void;
 }) {
+  const account = useAccount();
+  const permittedOwners =
+    account?.role === "Admin"
+      ? owners
+      : account?.role === "Manager"
+        ? [account.owner, ...account.team]
+        : [account?.owner || owners[0]];
   const [draft, setDraft] = useState(() => {
     const initial = record ? { ...record } : emptyRecord(domain);
+    if (!record) initial.owner = account?.owner || owners[0];
     if (domain === "activities") {
       const time = new Date(record?.date ?? Date.now());
       initial.date = new Date(time.getTime() - time.getTimezoneOffset() * 60000)
@@ -112,7 +124,7 @@ export function RecordForm({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const busy = useRef(false);
-  const db = useAppSelector((s) => s.crm);
+  const db = useVisibleDatabase();
   const set = (key: keyof RecordItem, value: string | number) =>
     setDraft((s) => ({ ...s, [key]: value }));
   function submit(e: FormEvent) {
@@ -208,7 +220,7 @@ export function RecordForm({
               value={draft.owner}
               onChange={(e) => set("owner", e.target.value)}
             >
-              {owners.map((o) => (
+              {permittedOwners.map((o) => (
                 <option key={o}>{o}</option>
               ))}
             </select>
@@ -230,7 +242,7 @@ export function RecordForm({
               </select>
             </label>
           )}
-          {["tasks", "deals"].includes(domain) && (
+          {["tasks", "deals", "leads"].includes(domain) && (
             <label>
               Priority
               <select
@@ -257,18 +269,28 @@ export function RecordForm({
               Linked {domain === "deals" ? "customer" : "record"}
               <select
                 value={
-                  domain === "deals" ? (draft.customerId ?? "") : draft.linkedId
+                  domain === "deals"
+                    ? draft.customerId || draft.leadId || ""
+                    : draft.linkedId
                 }
-                onChange={(e) =>
-                  set(
-                    domain === "deals" ? "customerId" : "linkedId",
-                    e.target.value,
-                  )
-                }
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (domain === "deals")
+                    setDraft((d) => ({
+                      ...d,
+                      customerId: db.customers.some((c) => c.id === id)
+                        ? id
+                        : undefined,
+                      leadId: db.leads.some((l) => l.id === id)
+                        ? id
+                        : undefined,
+                    }));
+                  else set("linkedId", id);
+                }}
               >
                 <option value="">No linked record</option>
                 {(domain === "deals"
-                  ? (["customers"] as Domain[])
+                  ? (["customers", "leads"] as Domain[])
                   : domains.filter((d) =>
                       ["leads", "customers", "deals"].includes(d),
                     )

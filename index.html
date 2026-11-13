@@ -9,6 +9,22 @@
       name="description"
       content="Meridian CRM - your customer relationships, connected."
     />
+    <script>
+      (() => {
+        let preference = "system";
+        try {
+          preference = localStorage.getItem("meridian-theme");
+        } catch {}
+        const theme =
+          preference === "light" || preference === "dark"
+            ? preference
+            : window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
     <title>Meridian | Enterprise CRM</title>
   </head>
   <body>

@@ -187,3 +187,5 @@ test("production CRM routes, nested direct refresh and saved edits work", async 
   await expect(page).toHaveURL(/\/leads$/);
   expect(errors).toEqual([]);
 });
+
+ test.beforeEach(async ({page})=>{await page.goto('/login');await page.getByLabel('Email',{exact:true}).fill('admin@meridian.demo');await page.getByLabel('Password',{exact:true}).fill('Meridian2026!');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('heading',{name:'Overview',exact:true})).toBeVisible();});

@@ -1,4 +1,17 @@
-import { Component, lazy, Suspense, useState, type ReactNode } from "react";
+import { SessionGate, Settings } from "./features/Account";
+import { Reports, Notifications, NotificationLink } from "./features/Insights";
+import { canDelete, authSlice } from "./app/auth";
+import { Navigate } from "react-router-dom";
+import { useVisibleDatabase, useAccount } from "./app/store";
+import {
+  Component,
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createRoot } from "react-dom/client";
 import { Provider } from "react-redux";
 import {
@@ -44,6 +57,7 @@ const Dashboard = lazy(() =>
 );
 import { Dialog } from "./components/Forms";
 import "./styles.css";
+import { useTheme, type ThemePreference } from "./app/theme";
 class ErrorBoundary extends Component<
   { children: ReactNode },
   { failed: boolean }
@@ -73,13 +87,75 @@ const nav = [
   { path: "/customers", label: "Customers", icon: Contact },
   { path: "/tasks", label: "Tasks", icon: CheckSquare },
   { path: "/activities", label: "Activities", icon: Activity },
+  { path: "/reports", label: "Reports", icon: LayoutDashboard },
+  { path: "/notifications", label: "Notifications", icon: Activity },
+  { path: "/settings", label: "Profile & settings", icon: Users },
 ];
 function App() {
-  const db = useAppSelector((s) => s.crm);
+  const account = useAccount()!;
+  const { preference, setPreference } = useTheme();
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const [drawerLayout, setDrawerLayout] = useState(
+    () => window.innerWidth < 1024,
+  );
+  const db = useVisibleDatabase();
   const dispatch = useAppDispatch();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1023px)");
+    const resize = () => {
+      setDrawerLayout(media.matches);
+      if (!media.matches) setMobile(false);
+    };
+    media.addEventListener("change", resize);
+    return () => media.removeEventListener("change", resize);
+  }, []);
+  useEffect(() => {
+    setMobile(false);
+  }, [location.pathname]);
+  useEffect(() => {
+    if (!mobile) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    shellRef.current?.setAttribute("inert", "");
+    const controls = () =>
+      Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>(
+          "a[href], button:not(:disabled)",
+        ) ?? [],
+      ).filter((el) => el.getClientRects().length);
+    controls()[0]?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (document.querySelector("dialog[open]")) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMobile(false);
+      }
+      if (event.key === "Tab") {
+        const items = controls();
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", keydown);
+    return () => {
+      document.body.style.overflow = previous;
+      shellRef.current?.removeAttribute("inert");
+      document.removeEventListener("keydown", keydown);
+      menuRef.current?.focus();
+    };
+  }, [mobile]);
   const [query, setQuery] = useState("");
   const [toast, setToast] = useState("");
   const [confirm, setConfirm] = useState(false);
@@ -111,13 +187,28 @@ function App() {
     nav.find((n) => n.path === `/${location.pathname.split("/")[1]}`)?.label ??
     "Overview";
   return (
-    <div className={`app ${collapsed ? "collapsed" : ""}`}>
+    <div className={`app ${collapsed && !drawerLayout ? "collapsed" : ""}`}>
       <button
         className={`sidebar-overlay ${mobile ? "visible" : ""}`}
         aria-label="Close navigation"
         onClick={() => setMobile(false)}
       />
-      <aside className={`sidebar ${mobile ? "open" : ""}`}>
+      <aside
+        ref={sidebarRef}
+        id="primary-navigation"
+        aria-label="Workspace navigation"
+        role={drawerLayout && mobile ? "dialog" : undefined}
+        aria-modal={drawerLayout && mobile ? true : undefined}
+        inert={drawerLayout && !mobile}
+        className={`sidebar ${mobile ? "open" : ""}`}
+      >
+        <button
+          className="icon-button drawer-close"
+          aria-label="Close navigation"
+          onClick={() => setMobile(false)}
+        >
+          <X size={20} />
+        </button>
         <Link to="/" className="brand">
           <span className="brand-mark">
             m<span>&#183;</span>
@@ -143,7 +234,7 @@ function App() {
           )}
         </div>
         <div className="nav-caption">WORKSPACE</div>
-        <nav>
+        <nav aria-label="Main navigation">
           {nav.map(({ path, label, icon: Icon }) => (
             <NavLink
               key={path}
@@ -166,25 +257,38 @@ function App() {
               About this workspace <ArrowUpRight size={14} />
             </button>
           </div>
-          <button className="sidebar-action" onClick={() => setConfirm(true)}>
+          <button
+            hidden={account.role !== "Admin"}
+            className="sidebar-action"
+            onClick={() => setConfirm(true)}
+          >
             <RotateCcw size={17} />
             <span>Reset demo data</span>
           </button>
-          <button className="user-profile" onClick={() => setAbout(true)}>
-            <span className="avatar user">AM</span>
+          <Link className="user-profile" to="/settings">
+            <span className="avatar user">
+              {account.name
+                .split(" ")
+                .map((n) => n[0])
+                .join("")
+                .slice(0, 2)}
+            </span>
             <span>
-              Alex Morgan<small>Workspace admin</small>
+              {account.name}
+              <small>{account.role}</small>
             </span>
             <ChevronDown size={15} />
-          </button>
+          </Link>
         </div>
       </aside>
-      <div className="main-shell">
+      <div className="main-shell" ref={shellRef}>
         <header className="topbar">
           <div className="topbar-left">
             <button
               className="icon-button desktop-toggle"
               aria-label="Toggle sidebar"
+              aria-expanded={!collapsed}
+              aria-controls="primary-navigation"
               onClick={() => setCollapsed(!collapsed)}
             >
               {collapsed ? (
@@ -196,6 +300,9 @@ function App() {
             <button
               className="icon-button mobile-toggle"
               aria-label="Open navigation"
+              ref={menuRef}
+              aria-expanded={mobile}
+              aria-controls="primary-navigation"
               onClick={() => setMobile(true)}
             >
               <Menu size={20} />
@@ -243,18 +350,62 @@ function App() {
                 </div>
               )}
             </div>
+            <select
+              className="theme-select"
+              aria-label="Color theme"
+              value={preference}
+              onChange={(e) => setPreference(e.target.value as ThemePreference)}
+            >
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+            <NotificationLink />
+            <button
+              className="secondary"
+              onClick={() => dispatch(authSlice.actions.logout())}
+            >
+              Logout
+            </button>
             <span className="topbar-divider" />
             <button
               className="avatar user"
               aria-label="Workspace information"
               onClick={() => setAbout(true)}
             >
-              AM
+              {account.name
+                .split(" ")
+                .map((n) => n[0])
+                .join("")
+                .slice(0, 2)}
             </button>
           </div>
         </header>
         <main>
           <Routes>
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route
+              path="/access-denied"
+              element={
+                <div className="empty">
+                  <h1>Access denied</h1>
+                  <p>You do not have permission to view this page or record.</p>
+                  <Link to="/">Return to overview</Link>
+                </div>
+              }
+            />
+            <Route
+              path="/admin/*"
+              element={
+                account.role === "Admin" ? (
+                  <Navigate to="/" replace />
+                ) : (
+                  <Navigate to="/access-denied" replace />
+                )
+              }
+            />
             <Route
               path="/"
               element={
@@ -357,9 +508,9 @@ function App() {
             and the work that brings them together.
           </p>
           <p>
-            Records are stored locally in this browser. There is no
-            authentication, server synchronization, or outbound email. Email
-            activities are manually logged records.
+            Records are stored locally in this browser. Authentication is
+            simulated locally. There is no server synchronization or outbound
+            email. Email activities are manually logged records.
           </p>
           <p>Workspace owner: Alex Morgan - Four demo relationship owners.</p>
           <footer>
@@ -379,7 +530,9 @@ createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
     <Provider store={store}>
       <BrowserRouter>
-        <App />
+        <SessionGate>
+          <App />
+        </SessionGate>
       </BrowserRouter>
     </Provider>
   </ErrorBoundary>,

@@ -1,3 +1,4 @@
+import { useVisibleDatabase, useAccount } from "../app/store";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -29,10 +30,16 @@ import { analytics, useAppSelector } from "../app/store";
 import { stages, today } from "../data/model";
 import { Badge, date, money } from "./Records";
 export function Dashboard() {
-  const db = useAppSelector((s) => s.crm);
+  const db = useVisibleDatabase();
+  const account = useAccount()!;
   const [days, setDays] = useState(90);
   const metrics = analytics(db, days);
-  const colors = ["#6366f1", "#9698f7", "#c2c4fb", "#e0e1fd"];
+  const colors = [
+    "var(--series-1)",
+    "var(--series-2)",
+    "var(--series-3)",
+    "var(--series-4)",
+  ];
   const pipeline = stages.map((name) => ({
     name,
     value: metrics.deals
@@ -108,7 +115,10 @@ export function Dashboard() {
               &#10022;
             </span>
           </h1>
-          <p>Welcome back, Alex. Let's make meaningful connections.</p>
+          <p>
+            Welcome back, {account.name.split(" ")[0]}. Let's make meaningful
+            connections.
+          </p>
         </div>
         <div className="heading-actions">
           <label className="date-select">
@@ -129,6 +139,48 @@ export function Dashboard() {
           </button>
         </div>
       </div>
+      <section className="card settings-card" aria-label="Personal performance">
+        <h2>{account.role === "Manager" ? "Team" : "Personal"} performance</h2>
+        <p>
+          Open deals:{" "}
+          {db.deals.filter((d) => !d.status.startsWith("Closed")).length} �
+          Pending tasks:{" "}
+          {db.tasks.filter((t) => t.status !== "Completed").length} � Overdue
+          tasks:{" "}
+          {
+            db.tasks.filter((t) => t.status !== "Completed" && t.date < today())
+              .length
+          }
+        </p>
+        <p>
+          Won revenue: {money(metrics.won)} / {money(account.target)} target
+        </p>
+        <progress
+          value={metrics.won}
+          max={account.target}
+          aria-label="Sales target progress"
+        />
+        <h3>Upcoming meetings & follow-ups</h3>
+        {db.activities
+          .filter(
+            (a) =>
+              ["Meeting", "Follow-up"].includes(a.status) &&
+              Date.parse(a.date) >= Date.now(),
+          )
+          .slice(0, 5)
+          .map((a) => (
+            <p key={a.id}>
+              <Link to={"/activities/" + a.id}>
+                {a.name} � {date(a.date)}
+              </Link>
+            </p>
+          ))}
+        {!db.activities.some(
+          (a) =>
+            ["Meeting", "Follow-up"].includes(a.status) &&
+            Date.parse(a.date) >= Date.now(),
+        ) && <p>No upcoming meetings or follow-ups.</p>}
+      </section>
       <div className="welcome-strip">
         <div>
           <span className="live-dot" /> A little clarity. A lot of possibility.
@@ -202,7 +254,13 @@ export function Dashboard() {
           </div>
           {metrics.deals.length ? (
             <div className="chart">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                minWidth={1}
+                minHeight={1}
+                initialDimension={{ width: 300, height: 220 }}
+              >
                 <AreaChart
                   data={trend}
                   margin={{ left: 0, right: 10, top: 15, bottom: 0 }}
@@ -215,25 +273,33 @@ export function Dashboard() {
                       x2="0"
                       y2="1"
                     >
-                      <stop offset="0%" stopColor="#6366f1" stopOpacity={0.2} />
-                      <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+                      <stop
+                        offset="0%"
+                        stopColor="var(--series-1)"
+                        stopOpacity={0.2}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor="var(--series-1)"
+                        stopOpacity={0}
+                      />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
                     strokeDasharray="4 4"
                     vertical={false}
-                    stroke="#eceef3"
+                    stroke="var(--chart-grid)"
                   />
                   <XAxis
                     dataKey="name"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 11, fill: "#8790a3" }}
+                    tick={{ fontSize: 11, fill: "var(--chart-text)" }}
                   />
                   <YAxis
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fontSize: 11, fill: "#8790a3" }}
+                    tick={{ fontSize: 11, fill: "var(--chart-text)" }}
                     tickFormatter={(n) => `$${n / 1000}k`}
                     width={52}
                   />
@@ -242,7 +308,7 @@ export function Dashboard() {
                     isAnimationActive={false}
                     type="monotone"
                     dataKey="Pipeline"
-                    stroke="#c1c2ef"
+                    stroke="var(--series-2)"
                     strokeWidth={2}
                     fill="transparent"
                     strokeDasharray="5 5"
@@ -251,7 +317,7 @@ export function Dashboard() {
                     isAnimationActive={false}
                     type="monotone"
                     dataKey="Revenue"
-                    stroke="#6366f1"
+                    stroke="var(--series-1)"
                     strokeWidth={3}
                     fill="url(#fillRevenue)"
                   />
@@ -281,7 +347,13 @@ export function Dashboard() {
           {sources.length ? (
             <>
               <div className="donut">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                  minWidth={1}
+                  minHeight={1}
+                  initialDimension={{ width: 300, height: 220 }}
+                >
                   <PieChart>
                     <Pie
                       isAnimationActive={false}
@@ -341,7 +413,7 @@ export function Dashboard() {
                   <i
                     style={{
                       width: `${metrics.deals.length ? (s.count / metrics.deals.length) * 100 : 0}%`,
-                      background: i > 3 ? "#a5b4c8" : "#7778ee",
+                      background: i > 3 ? "var(--series-3)" : "var(--series-1)",
                     }}
                   />
                 </div>
@@ -359,28 +431,38 @@ export function Dashboard() {
           </div>
           {sales.length ? (
             <div className="small-chart">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                minWidth={1}
+                minHeight={1}
+                initialDimension={{ width: 300, height: 220 }}
+              >
                 <BarChart data={sales}>
-                  <CartesianGrid vertical={false} strokeDasharray="4 4" />
+                  <CartesianGrid
+                    vertical={false}
+                    stroke="var(--chart-grid)"
+                    strokeDasharray="4 4"
+                  />
                   <XAxis
                     dataKey="name"
                     tickLine={false}
                     axisLine={false}
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 12, fill: "var(--chart-text)" }}
                   />
                   <YAxis
                     tickFormatter={(n) => `${n / 1000}k`}
                     axisLine={false}
                     tickLine={false}
                     width={38}
-                    tick={{ fontSize: 11 }}
+                    tick={{ fontSize: 11, fill: "var(--chart-text)" }}
                   />
                   <Tooltip formatter={(v: number) => money(v)} />
                   <Bar
                     isAnimationActive={false}
                     dataKey="value"
                     name="Won revenue"
-                    fill="#8183ed"
+                    fill="var(--series-1)"
                     radius={[5, 5, 0, 0]}
                     maxBarSize={38}
                   />

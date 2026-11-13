@@ -26,7 +26,7 @@ Browser tests use the installed Microsoft Edge browser. Change `channel` in `pla
 
 - **Overview:** five calculated KPIs; revenue/open-pipeline trends; lead-source donut; stage distribution; owner sales performance; recent activity; unfinished tasks; overdue open deals. Date filters change the analytics cohort, and Export report downloads the current metrics as CSV.
 - **Leads:** searchable, sortable, paginated directory; status/source/owner filters; validated CRUD; details and connected records. A Qualified lead can become a linked customer, with an optional opportunity. Repeat conversion is blocked. A matching customer (same email and company, or originating lead) is reused. The Converted status is controlled by the conversion action.
-- **Sales pipeline:** six stages, counts and total value, full CRUD, stage select controls operable with keyboard/touch, owner/stage/date filters, and a switchable list view. Board scrolling is contained within the board. Drag and drop is intentionally omitted; the stage controls work on all devices.
+- **Sales pipeline:** six stages, counts and total value, full CRUD, stage select controls operable with keyboard/touch, owner/stage/date filters, and a switchable list view. Board scrolling is contained within the board. Fine-pointer devices support drag and drop; accessible stage controls work on all devices.
 - **Customers:** searchable directory, contact details, address, notes, deals, tasks, and chronological activity. Customer company changes propagate to linked records. Deletion requires confirmation and retains linked records with references cleared.
 - **Tasks:** search, sorting, owner/priority/status/deadline filters; overdue/today/upcoming/completed views; create/edit/delete; complete and reopen. Past unfinished tasks show both an overdue label and color.
 - **Activities:** log calls, meetings, email activities, notes, and follow-ups; search/type/owner filters; edit and delete; chronological profiles; create a linked follow-up task. Logged email entries never send messages.
@@ -88,7 +88,7 @@ Use these project settings:
 | Install Command  | `npm ci`                                                                     |
 | Node.js Version  | `24.x`                                                                       |
 
-**Root Directory depends on the repository layout, not the ZIP filename.** This workspace has `package.json` directly at its top level. If these files are committed directly at your repository root, leave Vercel Root Directory at the repository root (the default, `.`). If you upload or commit the ZIP's parent folder and the repository contains `task 25/package.json`, set Vercel Root Directory to **`task 25`**. Do not select `dist` as Root Directory. There is no Git metadata in this workspace, so the remote repository layout cannot be determined here.
+**Root Directory depends on the repository layout, not the ZIP filename.** This workspace has `package.json` directly at its top level. If these files are committed directly at your repository root, leave Vercel Root Directory at the repository root (the default, `.`). If you upload or commit the ZIP's parent folder and the repository contains `task 25/package.json`, set Vercel Root Directory to **`task 25`**. Do not select `dist` as Root Directory. The remote repository layout must be checked before selecting the deployment root.
 
 The BOM-free UTF-8 `vercel.json` explicitly selects Vite, runs the production build, publishes `dist`, and rewrites `/(.*)` to `/index.html` for client-side routing. This follows [Vercel's Vite SPA deep-linking guidance](https://vercel.com/docs/frameworks/frontend/vite#using-vite-to-make-spas). Existing JavaScript, CSS, and public files must remain available as static assets. Node 24.x is selected by `package.json` engines and is [supported by Vercel](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions).
 
@@ -111,4 +111,33 @@ Configuration changes do not change the localStorage key, demo seed, record sche
 
 ## Limitations
 
-`npm run build` writes a static SPA to `dist/`. Other static hosts must serve `index.html` for non-asset CRM routes. Data is editable demo content: there are no APIs, real emails, organization permissions, server backups, currency conversion, historical stage audit ledger, or multi-user synchronization. This is a complete local frontend, not a production CRM service.
+`npm run build` writes a static SPA to `dist/`. Other static hosts must serve `index.html` for non-asset CRM routes. Data is editable demo content: there are no APIs, real emails, server-enforced organization permissions, server backups, currency conversion, historical stage audit ledger, or multi-user synchronization. This is a complete local frontend, not a production CRM service.
+
+## User panel and demo authentication
+
+The existing React Router, CRM Redux slice, record models, seed data, forms, tables, Recharts dashboard and design tokens are reused by both panels. No separate design files or authentication API were present; the user panel follows the existing Meridian admin styling. Existing CRM data remains under `meridian-crm-v1`; accounts/preferences/read state use `meridian-accounts-v1`. Invalid stored account data resets only the account demo. Theme preferences use the existing theme key. Deployment configuration is unchanged.
+
+Sign in at `/login`. Initial password for all demo accounts: **`Meridian2026!`**.
+
+| Account | Role | Access |
+| --- | --- | --- |
+| admin@meridian.demo | Admin / Alex Morgan | All records, assignment, deletion and demo reset |
+| manager@meridian.demo | Manager / Olivia Brooks | Own records plus Sarah Chen and James Wilson's records; assignment within that team; deletion and team reports |
+| employee@meridian.demo | Employee / James Wilson | Own records, creation/editing, task completion, personal reports |
+| sales@meridian.demo | Sales Representative / Sarah Chen | Own records, creation/editing, conversion, personal reports |
+
+Employees and sales representatives cannot delete records or assign records to other owners. Managers cannot access Alex Morgan's records. Routes, global search, related record pickers, details, metrics and exports all use the same ownership scope. Redux middleware checks current ownership, new assignments, linked records, conversion, deletion and workspace reset. Record owner identifiers stay stable when profile display names change, preserving existing relationships. The original module routes remain available to Admin after signing in; `/admin` redirects Admin to the shared overview and denies other roles. Signed-out visits to protected routes redirect to `/login`.
+
+New routes: `/forgot-password`, `/verify-otp`, `/reset-password`, `/reports`, `/notifications`, `/settings`, `/access-denied`. The existing overview, lead, deal, customer, task and activity list/detail routes serve role-appropriate records. Dashboard statistics and target progress recalculate from shared records. Reports support inclusive creation-date boundaries, zero-safe conversion/task completion, won/lost counts, activity breakdown and permitted CSV downloads. Managers and Admin see owner revenue summaries. Lead priority filtering and reset controls complement the existing filters. Fine-pointer devices can drag deals between stages; touch devices use stage selects without competing drag gestures. Lead/customer/deal/activity details can schedule linked follow-up tasks.
+
+Settings persist profile name, email, target and reminder preference. Header/sidebar display the updated profile. Password changes require the current password, confirmation, and at least 12 characters containing uppercase, lowercase, number and symbol. Password values are never logged; updated demo passwords are stored as SHA-256 digests, which are **not production password storage**.
+
+Recovery is explicitly simulated: no email, OTP, SMS or network request is sent. A random demo verification code is shown on-screen, expires after five minutes, and allows five attempts. Verification state stays in memory; refreshing recovery screens requires starting again. Reset updates only the selected local account. Signing out clears the local session. Sessions are restored from this browser's local storage; there are no server tokens, expiry enforcement or cross-device sessions.
+
+Notifications derive deterministic identifiers from accessible lead assignments, due/overdue tasks, upcoming meetings/follow-ups within seven days, and closed deal updates. Mark-one/all read states persist per account and repeated rendering does not duplicate notifications. The reminder preference suppresses task and meeting reminders. These are browser-local current-state reminders, not a historical event log or background/push service: updates appear when the UI renders while open. No messages or emails are sent when logging activity.
+
+**Security/integration limitation:** all authorization is a frontend simulation. Anyone with browser developer tools can alter data, permissions, stored sessions or password digests. There is no backend, real identity provider, email delivery, server-side authorization, push worker or multi-user synchronization. Production integration must replace local auth and persistence with authenticated APIs and enforce ownership/team permissions on the server. No API endpoints or secrets have been invented.
+
+## Validation of the user panel
+
+New unit tests cover session state, owner/team scope, mutation restrictions, password rules and per-account notification read deduplication. Browser tests cover the original Admin workflows after sign-in, simulated recovery, user access restrictions, persistent profile/read state, logout, user-owned record changes, and manager team boundaries. The user-route viewport matrix includes 320, 375, 390, 428, 768, 820, 1024, 1280, 1440 and 1920 pixels, with 900px and 400px heights. Existing theme checks exercise light/dark layouts, mobile drawers, small-height dialogs and pipeline changes. Run `npm test`, `npm run build`, `npm run test:e2e`, and `npm run test:production`. No lint command is available in this repository.

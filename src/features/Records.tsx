@@ -1,3 +1,5 @@
+import { canDelete } from "../app/auth";
+import { useVisibleDatabase, useAccount } from "../app/store";
 import { queryRecords } from "../utils/records";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -57,12 +59,14 @@ export function Records({
   domain: Domain;
   notify: (s: string) => void;
 }) {
-  const db = useAppSelector((s) => s.crm);
+  const db = useVisibleDatabase();
+  const account = useAccount();
   const dispatch = useAppDispatch();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [owner, setOwner] = useState("");
   const [extra, setExtra] = useState("");
+  const [priority, setPriority] = useState("");
   const [deadline, setDeadline] = useState("");
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState(
@@ -76,16 +80,31 @@ export function Records({
   const [withDeal, setWithDeal] = useState(true);
   const filtered = useMemo(
     () =>
-      queryRecords(db[domain], domain, {
-        search,
-        status,
-        owner,
-        extra,
-        deadline,
-        sort,
-        ascending,
-      }),
-    [db, domain, search, status, owner, extra, deadline, sort, ascending],
+      queryRecords(
+        db[domain].filter((r) => !priority || r.priority === priority),
+        domain,
+        {
+          search,
+          status,
+          owner,
+          extra,
+          deadline,
+          sort,
+          ascending,
+        },
+      ),
+    [
+      db,
+      domain,
+      search,
+      status,
+      owner,
+      extra,
+      priority,
+      deadline,
+      sort,
+      ascending,
+    ],
   );
   const pages = Math.max(1, Math.ceil(filtered.length / 7));
   const current = Math.min(page, pages);
@@ -124,6 +143,7 @@ export function Records({
       <button
         className="danger-text"
         onClick={() => setDeleting(r)}
+        hidden={!canDelete(account)}
         aria-label={`Delete ${r.name}`}
       >
         Delete
@@ -229,6 +249,32 @@ export function Records({
             {domain === "tasks" && <option value="completed">Completed</option>}
           </select>
         )}
+        {domain === "leads" && (
+          <select
+            aria-label="Filter priority"
+            value={priority}
+            onChange={(e) => filter(() => setPriority(e.target.value))}
+          >
+            <option value="">All priorities</option>
+            {["Low", "Medium", "High", "Urgent"].map((p) => (
+              <option key={p}>{p}</option>
+            ))}
+          </select>
+        )}
+        <button
+          className="secondary"
+          onClick={() => {
+            setSearch("");
+            setStatus("");
+            setOwner("");
+            setExtra("");
+            setPriority("");
+            setDeadline("");
+            setPage(1);
+          }}
+        >
+          Reset filters
+        </button>
         <select
           aria-label="Sort records"
           value={sort}
@@ -260,18 +306,49 @@ export function Records({
           <p>Try adjusting your filters or create your first record.</p>
         </div>
       ) : domain === "deals" && board ? (
-        <div className="kanban">
+        <div
+          className="kanban"
+          role="region"
+          aria-label="Sales pipeline by stage"
+          tabIndex={0}
+        >
           {stages.map((stage) => {
             const records = filtered.filter((r) => r.status === stage);
             return (
-              <section className="stage" key={stage}>
+              <section
+                className="stage"
+                key={stage}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const id = e.dataTransfer.getData("text/plain");
+                  const r = db.deals.find((d) => d.id === id);
+                  if (r) {
+                    dispatch(
+                      save({
+                        domain: "deals",
+                        record: { ...r, status: stage },
+                      }),
+                    );
+                    notify("Deal stage updated");
+                  }
+                }}
+              >
                 <div className="stage-head">
                   <b>{stage}</b>
                   <span>{records.length}</span>
                 </div>
                 <p>{money(records.reduce((s, r) => s + r.value, 0))}</p>
                 {records.map((r) => (
-                  <article className="deal-card" key={r.id}>
+                  <article
+                    className="deal-card"
+                    key={r.id}
+                    draggable={window.matchMedia("(pointer: fine)").matches}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", r.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                  >
                     <Badge text={r.priority} />
                     <Link to={`/deals/${r.id}`}>
                       <h3>{r.name}</h3>
@@ -323,7 +400,12 @@ export function Records({
             </h3>
             <span className="muted">Your relationships, in one place</span>
           </div>
-          <div className="table-scroll">
+          <div
+            className="table-scroll"
+            role="region"
+            aria-label={`${domain} records, scroll horizontally for more columns`}
+            tabIndex={0}
+          >
             <table>
               <thead>
                 <tr>

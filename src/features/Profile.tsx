@@ -1,3 +1,4 @@
+import { useVisibleDatabase, useAccount } from "../app/store";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Plus, ArrowUpRight } from "lucide-react";
@@ -13,7 +14,7 @@ export function Profile({
   notify: (s: string) => void;
 }) {
   const { id } = useParams();
-  const db = useAppSelector((s) => s.crm);
+  const db = useVisibleDatabase();
   const dispatch = useAppDispatch();
   const record = db[domain].find((r) => r.id === id);
   const [edit, setEdit] = useState(false);
@@ -21,7 +22,7 @@ export function Profile({
   if (!record)
     return (
       <div className="empty">
-        <h1>Record not found</h1>
+        <h1>Access denied or record not found</h1>
         <Link to={`/${domain}`}>Return to {domain}</Link>
       </div>
     );
@@ -37,7 +38,7 @@ export function Profile({
       )
       .map((r) => ({ domain: d, record: r })),
   );
-  const parentId = record.customerId || record.linkedId;
+  const parentId = record.customerId || record.leadId || record.linkedId;
   const parent = domains
     .flatMap((d) => db[d].map((r) => ({ domain: d, record: r })))
     .find((v) => v.record.id === parentId);
@@ -98,7 +99,7 @@ export function Profile({
                 <b>Outcome:</b> {record.outcome}
               </p>
             )}
-            {domain === "activities" && (
+            {["activities", "leads", "customers", "deals"].includes(domain) && (
               <button className="secondary" onClick={() => setFollow(true)}>
                 <Plus size={16} />
                 Create follow-up task
@@ -157,7 +158,7 @@ export function Profile({
             id: crypto.randomUUID(),
             name: `Follow up: ${record.name}`,
             status: "To Do",
-            linkedId: record.linkedId,
+            linkedId: domain === "activities" ? record.linkedId : record.id,
             createdAt: new Date().toISOString(),
             date: today(),
           }}
